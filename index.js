@@ -7,10 +7,10 @@ checkoutKitLoader.load('extension').then(async function(module) {
   console.log('params',params);
   
 
-  const cartId = params.get('cartId');
+  const orderId = params.get('orderId');
   const parentOrigin = params.get('parentOrigin');
 
-  console.log('cartId: ',cartId);
+  console.log('orderId: ',orderId);
   console.log('parentOrigin: ',parentOrigin);
   console.log('extensionId: ',extensionId);
 
