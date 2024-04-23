@@ -9,6 +9,11 @@ checkoutKitLoader.load('extension').then(async function(module) {
 
   const cartId = params.get('cartId');
   const parentOrigin = params.get('parentOrigin');
+
+  console.log('cartId: ',cartId);
+  console.log('parentOrigin: ',parentOrigin);
+  console.log('extensionId: ',extensionId);
+
   const extensionService = await module.initializeExtensionService({
     extensionId,
     parentOrigin,
