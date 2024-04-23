@@ -1,160 +1,149 @@
-// Define constants
-const CustomerPreferred = {
-    CarrierName: {
-      label: "Carrier Name",
-      type: "text",
-      formName: "CustomerPreferredObj",
-    },
-    // other fields...
-  };
-  
-  const WillCall = {
-    ContactName: {
-      label: "Contact Name",
-      type: "text",
-      formName: "WillCallObj",
-    },
-    // other fields...
-  };
-  
-  const UPS = {
-    Ground: {
-      label: "Ground",
-      type: "radio",
-      formName: "UPSObj"
-    },
-    // other fields...
-  };
-  
-  const FedEx = {
-    Ground: {
-      label: "Ground",
-      type: "radio",
-      formName: "FedExObj",
-    },
-    // other fields...
-  };
-  
-  // Define form state variables
-  let formData = {};
-  let accountNumber = 0;
-  let sellarsShipper = "Prepaid Truckload";
-  
-  let customerPreferredObj = {
-    CarrierName: "",
-    ContactName: "",
-    // other fields...
-  };
-  
-  let WillCallObj = {
-    ContactName: "",
-    ContactPhone: "",
-    ContactEmail: "",
-  };
-  
-  let FedExObj = "Ground";
-  let UPSObj = "Ground";
-  
-  let whoPaysShippping = "Sellars Pays Freight";
-  let isUsingFedExAccount = "Yes";
-  let isDisplayingAccountNumber = "FedEx";
-  let FormFields = FedEx;
-  let selectedRadioOption = "Ground";
-  
-  // Define event handlers
-  const handleSubmit = () => {
-    console.log("handlesubmit called");
-    fetch(`http://localhost:3000/cart/cart1`, {
-      method: "GET",
+checkoutKitLoader.load('extension').then(async function(module) {
+  console.log("Checkout loader - extension")
+  const params = new URL(document.location).searchParams;
+  const extensionId = params.get('extensionId');
+  const cartId = params.get('cartId');
+  const parentOrigin = params.get('parentOrigin');
+  const extensionService = await module.initializeExtensionService({
+    extensionId,
+    parentOrigin,
+    taggedElementId: 'content',
+  });
+
+
+  // reload checkout
+  const reloadButton = document.getElementById('reload-checkout');
+  reloadButton.addEventListener(
+    'click',
+    function() {
+      console.log('reload checkout');
+      extensionService.post({ type: ExtensionCommandType.ReloadCheckout });
+    }
+  );
+
+  //manually trigger pricing update
+  const submitShippingOption = document.getElementById('submit-shipping-option');
+  submitShippingOption.addEventListener(
+    'click',
+    function() {
+      consignmentUpdateTriggered(extensionService, cartId);
+    }
+  );
+
+
+
+  extensionService.addListener('EXTENSION:CONSIGNMENTS_CHANGED', async (data) => {
+
+    const priceUpdateNeeded = compareConsignments(data?.payload?.consignments, data?.payload?.previousConsignments);
+    if (priceUpdateNeeded) {
+      console.log("Consignment updated, need to trigger price update.")
+      consignmentUpdateTriggered(extensionService, cartId, data);
+    } else {
+      console.log("Key Consignment fields(country, state, shipping option) not updated, no need to trigger price update.")
+    }
+
+  });
+
+  async function consignmentUpdateTriggered(extensionService, cartId, data) {
+    console.log('consignments changed', data);
+    //compareConsignments(data.payload.consignments, data.payload.previousConsignments);
+
+    showLoadingIndicator(extensionService);
+    //post message to parent window - hide continue button
+    window.top.postMessage("hide-checkout-shipping-continue", "https://sellars-absorbent-materials-sandbox-1.mybigcommerce.com");
+
+
+    //perform price update operations
+
+    try {
+
+      await requestCartPriceUpdate(cartId);
+    } catch (e) {
+      console.log("Error in requestCartPriceUpdate");
+    }
+
+    //sleep for 3 seconds
+    await sleep(1000);
+    //post message to parent window - show continue button
+    hideLoadingIndicator();
+    window.top.postMessage("show-checkout-shipping-continue", "https://sellars-absorbent-materials-sandbox-1.mybigcommerce.com");
+    //window.top.postMessage("checkout-shipping-next-step", "https://sellars-absorbent-materials-sandbox-1.mybigcommerce.com");
+  }
+
+  async function requestCartPriceUpdate(cartId) {
+    //make fetch call to  http://localhost:7071/api/updateProductPrices with cartID as a post json
+    //test with California and Florida
+    const cartUpdate = await fetch('http://localhost:7071/api/updateProductPrices', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json'
       },
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        console.log("Response from server:", data);
-        // Do something with the response data
+      body: JSON.stringify({
+        checkoutId: cartId,
+        fedex:{
+          accountNumber:"CUST-101"
+        }
       })
-      .catch((error) => {
-        console.error("Error:", error);
-      });
-  };
-  
-  const handleRadioOptionChange = (event) => {
-    selectedRadioOption = event.target.value;
-  };
-  
-  const handleInputChange = (fieldName, value) => {
-    formData[fieldName] = value;
-  };
-  
-  const handleShippingChange = (event) => {
-    whoPaysShipping = event.target.value;
-  };
-  
-  const handleSellersShipperChange = (e) => {
-    sellarsShipper = e.target.value;
-  };
-  
-  function handleWillCallChange(e) {
-    WillCallObj[e.target.name] = e.target.value;
+    }).then(response => {
+      console.log(response);
+      return response.json();
+    });
+
+    console.log(cartUpdate);
+
   }
-  
-  function handleFedExChange(e) {
-    FedExObj = e.target.value;
-    console.log("change", e.target.value);
+
+  function compareConsignments(consignments, previousConsignments) {
+    let changed = false;
+    consignments.forEach((consignment) => {
+      const { id, shippingAddress: { country, stateOrProvinceCode } } = consignment;
+      const shippingOptionId = consignment?.selectedShippingOption?.id;
+
+      if (previousConsignments.length === 0) {
+        changed = true;
+      } else {
+        const prevConsignment = previousConsignments.find(prev => prev.id === id);
+        const previousCountry = prevConsignment.shippingAddress.country;
+        const previousStateOrProvinceCode = prevConsignment.shippingAddress.stateOrProvinceCode;
+        const previousShippingOptionId = prevConsignment?.selectedShippingOption?.id;
+
+        if (country !== previousCountry) {
+          console.log(`️🔄 Consignment #${id} shipping country change: ${previousCountry} -> ${country}.`);
+          changed = true;
+        }
+        if (stateOrProvinceCode !== previousStateOrProvinceCode) {
+          console.log(`️🔄 Consignment #${id} shipping state change: ${previousStateOrProvinceCode} -> ${stateOrProvinceCode}.`);
+          changed = true;
+        }
+        if (shippingOptionId !== previousShippingOptionId) {
+          console.log(`️🔄 Consignment #${id} shipping option change: ${previousShippingOptionId} -> ${shippingOptionId}.`);
+          changed = true;
+        }
+      }
+    });
+    return changed;
   }
-  
-  function handleUPSChange(e) {
-    UPSObj = e.target.value;
+
+
+  function sleep(ms) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
   }
-  
-  function handleCustomerPreferredChange(e) {
-    customerPreferredObj[e.target.name] = e.target.value;
+
+  function showLoadingIndicator() {
+    extensionService.post({
+      type: ExtensionCommandType.ShowLoadingIndicator,
+      payload: { show: true },
+    });
+
   }
-  
-  const handleShipperChange = (event) => {
-    const Shipper = event.target.value;
-    console.log("shipper to use: ", event.target.value);
-    // setSelectedShipper(Shipper); // You can remove this line
-    if (Shipper === "UPS") {
-      FormFields = UPS;
-      isDisplayingAccountNumber = "UPS";
-    } else if (Shipper === "Will Call") {
-      FormFields = WillCall;
-      isDisplayingAccountNumber = "WillCall";
-    } else if (Shipper === "FedEx") {
-      FormFields = FedEx;
-      isDisplayingAccountNumber = "FedEx";
-    } else if (Shipper === "Customer Preferred Carrier") {
-      FormFields = CustomerPreferred;
-      isDisplayingAccountNumber = "Customer Preferred Carrier";
-    }
-  };
-  
-  const renderFormField = (fieldName, fieldType, formName) => {
-    if (fieldType.type === "text") {
-      // Render text input
-    } else if (fieldType.type === "dropdown") {
-      // Render dropdown
-    } else if (fieldType.type === "radio") {
-      // Render radio input
-    } else if (fieldType.type === "email") {
-      // Render email input
-    }
-  };
-  
-  const handleFedExAccountChange = (e) => {
-    isUsingFedExAccount = e.target.value;
-  };
-  
-  // Rendering logic will go here
-  
-  // Render the form
-  const renderForm = () => {
-    // Rendering logic
-  };
-  
-  // Call renderForm to render the form initially
-  renderForm();
-  
+
+  function hideLoadingIndicator() {
+    extensionService.post({
+      type: ExtensionCommandType.ShowLoadingIndicator,
+      payload: { show: false },
+    });
+  }
+
+});
