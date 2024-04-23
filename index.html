@@ -7,7 +7,28 @@
 </head>
 <body>
     <div class="container">
-        <!-- Form will be rendered here -->
+        <h1>Custom Form</h1>
+        
+        <div>
+            <label for="selectShipper">Select Shipper:</label>
+            <select id="selectShipper">
+                <option value="UPS">UPS</option>
+                <option value="FedEx">FedEx</option>
+                <option value="CustomerPreferred">Customer Preferred Carrier</option>
+            </select>
+        </div>
+
+        <div>
+            <label for="accountNumber">Account Number:</label>
+            <input type="text" id="accountNumber" placeholder="Enter account number">
+        </div>
+
+        <div>
+            <label for="specialInstructions">Special Instructions:</label>
+            <textarea id="specialInstructions" rows="4" cols="50"></textarea>
+        </div>
+
+        <button id="submitButton">Submit</button>
     </div>
 
     <script src="index.js"></script>
